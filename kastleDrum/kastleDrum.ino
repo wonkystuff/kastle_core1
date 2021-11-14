@@ -1,22 +1,32 @@
+/* wonkystuff fork of Bastl software. Original banner comment below.
+ * This update 2021 by John Tuffen
+ * open source license: CC BY SA
+ *
+ * https://wonkystuff.net/
+ *
+ * History:
+ * 1. Removed commented-out code for clarity, fixed bug which prevented compilation and tidied warnings.
+ *    in Arduino 1.8.13
+ */
 
 /*
   KASTLE DRUM
-  
-The Kastle Drum is a special edition of Bastl’s classic mini modular synth focusing on algorithmic industrial glitchy drums
-How do you generate rhythm on a patchable drum machine that has neither buttons, nor a programmable sequencer? You discover it! 
 
-Drum sound synthesis with a unique dynamic acceleration charged envelope makes this rhythm box surprisingly versatile and extremely fun to play. 
-The built-in VC clock generator with a stepped pattern sequencer can either run on its own or it can be synchronized to analog clock, 
+The Kastle Drum is a special edition of Bastl’s classic mini modular synth focusing on algorithmic industrial glitchy drums
+How do you generate rhythm on a patchable drum machine that has neither buttons, nor a programmable sequencer? You discover it!
+
+Drum sound synthesis with a unique dynamic acceleration charged envelope makes this rhythm box surprisingly versatile and extremely fun to play.
+The built-in VC clock generator with a stepped pattern sequencer can either run on its own or it can be synchronized to analog clock,
 while retaining the triangle LFO for parameter modulation.
 
-The Kastle Drum is a mini modular synthesizer with a headphone output, 
-2 in/out ports for interfacing other gear, and it runs on just 3 AA batteries. It is ideal for beginners in modular synthesis, 
-but it will add some quite unique functionality to any modular synthesizer system. It delivers the fun of modular synthesis at a 
+The Kastle Drum is a mini modular synthesizer with a headphone output,
+2 in/out ports for interfacing other gear, and it runs on just 3 AA batteries. It is ideal for beginners in modular synthesis,
+but it will add some quite unique functionality to any modular synthesizer system. It delivers the fun of modular synthesis at a
 low price and fits into your pocket so you can play it anywhere!
 
 
 
-Kastle Drum Features 
+Kastle Drum Features
   -8 drum synthesis styles
   -”noises” output for less tonal content
   -DRUM selects drum sounds
@@ -25,7 +35,7 @@ Kastle Drum Features
   -PITCH control with offset and CV input with attenuator
   -voltage-controllable clock with square and triangle output
   -stepped voltage generator with random, 8 step and 16 step loop mode
-  -2 I/O CV ports that can be routed to any patch point 
+  -2 I/O CV ports that can be routed to any patch point
   -the main output can drive headphones
   -3x AA battery operation or USB power selectable by a switch
   -open source
@@ -52,68 +62,16 @@ Kastle Drum Features
   -and the whole bastl crew that made this project possible
   -Arduino community and the forums for picking ups bits of code to setup the timers & interrupts
   -v1.5 and kastle drum uses bits of code from miniMO DCO http://www.minimosynth.com/
-
-
 */
 
-#define F_CPU 8000000  // This is used by delay.h library
 #include <stdlib.h>
 #include <avr/interrupt.h>
 #include <avr/io.h>        // Adds useful constants
 #include <util/delay.h>
 
-//#include <CB_AT.h>
-//#include <CB2_AT.h>
-//#include <CB3_AT.h>
-//#include <CB4_AT.h>
-//#include <GB_BLIP_AT.h>
-//#include <GB_BZZ_AT.h>
-//#include <GB_GLITCH_AT.h>
-//#include <GB_HH_AT.h>
-//#include <GB_KICK_AT.h>
-//#include <GB_SNARE_AT.h>
-//#include <GB_TUI_AT.h>
-//#include <GL_A_AT.h>
-//#include <GL_B_AT.h>
-//#include <GL_C_AT.h>
-//#include <GL_D_AT.h>
-//#include <GL_E_AT.h>
-//#include <GL_F_AT.h>
-//#include <GL_G_AT.h>
-//#include <GL_H_AT.h>
-//#include <GL_I_AT.h>
-//#include <HAT_AT.h>
-//#include <HAT2_AT.h>
-//#include <KICK_AT.h>
-//#include <KICK2_AT.h>
-//#include <RIDE_AT.h>
-//#include <SNARE_AT.h>
-//#include <SNARE2_AT.h>
-//#include <TR_CB_AT.h>
-//#include <TR_CLAP_AT.h>
-
-//#include <TR_KICK_AT.h>
-//#include <TR_OH_AT.h>
-//#include <TR_RIM_AT.h>
-//#include <TR_SNARE_AT.h>
-//#include <TR_TOM_AT.h>
-
-//#include "SINE.h" //sinewave wavetable - modified but originnaly from the Mozzi library
-
 #include "TR_HH_AT.h"
-//#include <SAW.h>
-//#include <CHEB4.h>
-
-
-//for debugging purposes
-//#include "SoftwareSerial.h"
-//const int Rx = 8;
-//const int Tx = 3;
-//SoftwareSerial mySerial(Rx, Tx); //use only for debugging
 
 //global variables
-
-
 #define WSMAP_POINTS 5
 uint16_t wsMap[10] = {
   0, 63, 127, 191, 234,   15, 100, 160, 210, 254
@@ -128,7 +86,6 @@ uint8_t analogValues[4];
 uint8_t lastAnalogValues[4];
 uint8_t out;
 uint8_t pwmCounter;
-//uint8_t mapLookup[256];
 uint8_t _clocks;
 bool flop;
 uint8_t incr = 6, _incr = 6;
@@ -162,9 +119,15 @@ const uint8_t analogToDigitalPinMapping[4] = {
 #define WS_1 2
 #define WS_2 1
 
-const char PROGMEM sinetable[128] = {
-  0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 4, 5, 5, 6, 7, 9, 10, 11, 12, 14, 15, 17, 18, 20, 21, 23, 25, 27, 29, 31, 33, 35, 37, 40, 42, 44, 47, 49, 52, 54, 57, 59, 62, 65, 67, 70, 73, 76, 79, 82, 85, 88, 90, 93, 97, 100, 103, 106, 109, 112, 115, 118, 121, 124,
-  128, 131, 134, 137, 140, 143, 146, 149, 152, 155, 158, 162, 165, 167, 170, 173, 176, 179, 182, 185, 188, 190, 193, 196, 198, 201, 203, 206, 208, 211, 213, 215, 218, 220, 222, 224, 226, 228, 230, 232, 234, 235, 237, 238, 240, 241, 243, 244, 245, 246, 248, 249, 250, 250, 251, 252, 253, 253, 254, 254, 254, 255, 255, 255,
+const uint8_t PROGMEM sinetable[128] = {
+  0,   0,   0,   0,   1,   1,   1,   2,   2,   3,   4,   5,   5,   6,   7,   9,
+  10,  11,  12,  14,  15,  17,  18,  20,  21,  23,  25,  27,  29,  31,  33,  35,
+  37,  40,  42,  44,  47,  49,  52,  54,  57,  59,  62,  65,  67,  70,  73,  76,
+  79,  82,  85,  88,  90,  93,  97,  100, 103, 106, 109, 112, 115, 118, 121, 124,
+  128, 131, 134, 137, 140, 143, 146, 149, 152, 155, 158, 162, 165, 167, 170, 173,
+  176, 179, 182, 185, 188, 190, 193, 196, 198, 201, 203, 206, 208, 211, 213, 215,
+  218, 220, 222, 224, 226, 228, 230, 232, 234, 235, 237, 238, 240, 241, 243, 244,
+  245, 246, 248, 249, 250, 250, 251, 252, 253, 253, 254, 254, 254, 255, 255, 255,
 };
 
 //the actual table that is read to generate the sound
@@ -206,12 +169,9 @@ uint8_t decayVolume2 = 0;
 void setup()  { //happends at the startup
   writeWave(0);
   digitalWrite(5, HIGH); //turn on pull up resistor for the reset pin
-  // createLookup(); //mapping of knob values is done thru a lookuptable which is generated at startup from defined values
   //set outputs
   pinMode(0, OUTPUT);
   pinMode(1, OUTPUT);
-  //serial for debugging only
-  //mySerial.begin(9600);
 
   setTimers(); //setup interrupts
 
@@ -219,17 +179,10 @@ void setup()  { //happends at the startup
   init();
   connectChannel(analogChannelRead);
   startConversion();
-  //long _time=millis();
-  /*
-    while(millis()-_time<4){
-    loop();
-    }
-  */
   _delay_us(100);
   while (startupRead < 12) {
     loop();
   }
-  //  } //read voltages
   XYmode = true; //if all pots are hight and mode is HIGH than render XY mode instead
   if (analogValues[0] < HIGH_THRES)  XYmode = false;
   for (uint8_t i = 1; i < 4; i++) if (analogValues[i] < 200) XYmode = false; //HIGH_THRES
@@ -238,18 +191,6 @@ void setup()  { //happends at the startup
 
 void setTimers(void)
 {
-  /*
-    TCCR0A=0;
-    TCCR0B=0;
-    bitWrite(TCCR0A,COM0A0,0);
-    bitWrite(TCCR0A,COM0A1,1);
-    bitWrite(TCCR0A,COM0B0,0);
-    bitWrite(TCCR0A,COM0B1,1);
-    bitWrite(TCCR0A,WGM00,1);
-    bitWrite(TCCR0A,WGM01,1);
-    bitWrite(TCCR0B,WGM02,0);
-    bitWrite(TCCR0B,CS00,1);
-  */
   PLLCSR |= (1 << PLLE);               // Enable PLL (64 MHz)
   _delay_us(100);                      // Wait for a steady state
   while (!(PLLCSR & (1 << PLOCK)));    // Ensure PLL lock
@@ -270,17 +211,12 @@ void setTimers(void)
   GTCCR = _BV(PSR1);          //reset the prescaler
   OCR1A = 255;                //set the compare value
   OCR1C = 255;
-  // OCR1C = 31;
+
   TIMSK = _BV(OCIE1A);// | _BV(TOIE0);    //TOIE0    //interrupt on Compare Match A
   //start timer, ctc mode, prescaler clk/1
-  TCCR1 = _BV(CTC1) | _BV(CS12);// | _BV(CS10) ;//| _BV(CS11);//  | _BV(CS11) ;// //| _BV(CS13) | _BV(CS12) | _BV(CS11) |
-
-  // GTCCR  = (1 << PWM1B) | (1 << COM1B1); // PWM, output on pb4, compare with OCR1B (see interrupt below), reset on match with OCR1C
-  //OCR1C  = 0xff;                         // 255
-  // TCCR1  = (1 << CS10);                  // no prescale
+  TCCR1 = _BV(CTC1) | _BV(CS12);
 
   sei();
-  // TIMSK |=_BV(TOIE0);
 }
 
 uint16_t clocks() {
@@ -346,11 +282,7 @@ void zeroWave() {
     wavetable[i] = 1;                  //0 gives problems
   }
 }
-/*
-  ISR(TIMER0_OVF_vect){ // increment _clocks at PWM interrupt overflow - this gives 16bit time consciousnes to the chip (aproxx 2 seconds before overflow)
-  _clocks++;
-  }
-*/
+
 byte sample, sample90;
 unsigned int _phase, _lastPhase;
 unsigned int frequency;
@@ -360,17 +292,7 @@ unsigned int frequency2, frequency4, frequency5, frequency6;
 uint8_t _phs, _phs90;
 uint8_t _phase3;
 uint8_t pitchEnv;
-/*
-  ISR(TIMER0_OVF_vect){    //not used               //Timer 0 interruption - changes the width of timer 1's pulse to generate waves
-  //  OCR1B
 
-
-
-
-  // analogValues[WS_2]
-  //phase accumulator
-  }
-*/
 ISR(TIMER1_COMPA_vect)  // render primary oscillator in the interupt
 {
   OCR0A = sample;//(sample+sample2)>>1;
@@ -390,30 +312,12 @@ ISR(TIMER1_COMPA_vect)  // render primary oscillator in the interupt
   if(!(_phase%4) )_phase4 += frequency4;
 
 
-  //_phase5 += frequency5;
-  // _phase5 += frequency5;
   if (mode) { // other than FM, FM=0
-    //  _phase3 = _phase2 >> 5;
-    //(frequency2+1)<<1;
-
-    //(frequency2-1)*3;
-    // _phase6 += frequency6;
   }
   else {
     _phs = (_phase + (analogValues[WS_2] * wavetable[_phase2 >> 8])) >> 6;
     sample = ((wavetable[_phs] ) * decayVolume) >> 8;
   }
-
-
-
-  /*
-    out+=incr; // increment the oscillator saw core
-    if((analogValues[WS_2])<pwmCounter) OCR0B=255; //render pulse oscillator output
-    else OCR0B=0;
-
-    pwmCounter=out<<1; // speed up the frequency of the square wave output twice
-    TCNT1 = 0; //reset interupt couter
-  */
 }
 
 uint16_t sampleEnd;
@@ -426,22 +330,9 @@ void setFrequency2(uint16_t input) {
 
   if (mode > 6) bitWrite(TCCR0B, CS00, 0), bitWrite(TCCR0B, CS01, 1);
   else bitWrite(TCCR0B, CS00, 1), bitWrite(TCCR0B, CS01, 0);
-  /*
-    if (   mode == NOISE) frequency2 = (((input - 300) << 2) + 1) / 2; //sampleEnd=map(input,300,1024,0,sampleLength);//
-    else if (   mode == TAH) {
-      uint8_t multiplierIndex = analogValues[WS_2] >> 5;
-      frequency2 = (input << 2) + 1;
-      frequency4 = (frequency2 + 1) * multiplier[multiplierIndex]; //+analogValues[WS_2]>>4
-      frequency5 = (frequency2 - 3) * multiplier[multiplierIndex + 8]; //+analogValues[WS_2]>>3
-      frequency6 = (frequency2 + 7) * multiplier[multiplierIndex + 16]; //+analogValues[WS_2]>>2
-    }
-    else {
 
-    }
-  */
   frequency2 = (input << 4) + 1;
   frequency4 = 512 - input;
-  //frequency5 = frequency2;
 }
 
 void setLength(uint8_t _length) {
@@ -454,23 +345,6 @@ void setFrequency(uint16_t input) {
   else if (mode > 3) frequency = (input) + 1;
   else frequency = ((input + addEnv) << 2) + 1;
   frequency5 = frequency;
-
-
-  /*
-    coarseVolChange = false;                            //reset the control condition for volume
-    if (coarseFreqChange == false) {
-    byte coarsefreqRead = analogRead(pin) >> 2;
-    if (coarsefreqRead == potPosFreqRef) {
-    coarseFreqChange = true;
-    }
-    }
-    if (coarseFreqChange == true) {
-    int tempRead = analogRead(pin);
-    byte freqRead = tempRead >> 2;
-    potPosFreqRef = freqRead;
-    //frequencymap(tempRead, sensorMin, sensorMax, 1, 3600); //map the calibrated values (by default 0-1023) to the frequency range we want
-    }
-  */
 }
 
 int ultimateFold(int _input) {
@@ -493,10 +367,9 @@ void synthesis() {
       _phase3 = 0;
     }
     _lastSample2 = sample2;
-    _sample2 = (char)pgm_read_byte_near(sampleTable + (_phase3) ) + 128; //
-    // _sample2 = (_sample2 * (wavetable[((_phase2+_phase3)>>8)+sample]>>1)) >> 7;
-    if (analogValues[PITCH] > wavetable[(_phase4 >> 9) + (_sample2>>5)]) _sample2 = _lastSample2; //128;//_lastSample2;
-    //+(analogValues[WS_2]<<2)+
+    _sample2 = (char)pgm_read_byte_near(sampleTable + (_phase3) ) + 128;
+
+    if (analogValues[PITCH] > wavetable[(_phase4 >> 9) + (_sample2>>5)]) _sample2 = _lastSample2;
     else _sample2 = abs(_sample2 - _lastSample2);
     sample2 =  ((_sample2 * (decayVolume2)) >> 8);
   }
@@ -504,102 +377,67 @@ void synthesis() {
 
     if (XYmode) {
       _phs90 = _phs + 64;
-
-     // sample2 = (wavetable[_phs90] );
-
     }
     else {
-      /*
-        _lastSaw = _saw;
-        _saw = (((255 - (_phase >> 8)) * (analogValues[WS_2])) >> 8);
-        // uint8_t _p=(_phase4 >> 8)+128;
-        //sample2 = (((_saw*wavetable[_phase4 >> 8] )>>8)+((wavetable[_phase5 >> 8]*(255-analogValues[WS_2]))>>8)*decayVolume)>>8;
-
-        sample2 = (char)pgm_read_byte_near(sampleTable + (_phase >> 2));
-        sample2 = (sample2 * wavetable[_phase2 >> 8]) >> 8;
-        sample2 = (sample2 * decayVolume) >> 8;
-
-        if (_lastSaw < _saw) _phase4 = 64 << 8; // hard sync for phase distortion
-        uint8_t shft = abs(_saw - _lastSaw);
-        if (shft > 3) _phase5 += shft << 8; //soft sync for previous settings of waveshape
-      */
     }
 
   }
 
   if (mode == NOISE) {
-    if ((_phase >> 2) >= (analogValues[WS_2] - 100) << 5) {
+    if ((_phase >> 2) >= (analogValues[WS_2] - 100u) << 5) {
       _phase = 0;
     }
     _sample = (char)pgm_read_byte_near(sampleTable + (_phase >> 2));
     _sample = (_sample * wavetable[_phase2 >> 8]) >> 8;
     sample = (_sample * decayVolume) >> 8;
-    //sample2 = ((wavetable[_phase3 + (_phase >> 8)]) * decayVolume) >> 8;
   }
 
   if (mode == TAH) {
-    if ((_phase2 >> 8) < analogValues[WS_2] + 5)  _phs = _phase >> 8, sample = ((wavetable[_phs] ) * decayVolume) >> 8;
+    if ((_phase2 >> 8) < analogValues[WS_2] + 5u)  _phs = _phase >> 8, sample = ((wavetable[_phs] ) * decayVolume) >> 8;
     if (XYmode) {
       _phs90 = _phs + 64;
-      // sample2 = (wavetable[_phs90] );
     }
     else {
-      //  sample2 = (((wavetable[_phase2 >> 8] + wavetable[_phase4 >> 8] + wavetable[_phase5 >> 8] + wavetable[_phase6 >> 8]) >> 2) * decayVolume) >> 8;
     }
   }
 
   if (mode > 2) {
-    if ((_phase >> 2) >= (analogValues[WS_2] - 100) << 5) {
-      // _phase=0;
+    if ((_phase >> 2) >= (analogValues[WS_2] - 100u) << 5) {
     }
   }
   if (mode == 3) {
     if ((_phase >> SAMPLE_PHASE_SHIFT) > sample2Length) _phase = 0;
     _sample = (char)pgm_read_byte_near(sample2Table + (_phase >> SAMPLE_PHASE_SHIFT)) + 128;
-    //_sample = (_sample * wavetable[_phase2 >> 8]) >> 8;
     sample = (_sample * decayVolume) >> 8;
-    //sample2 = ((wavetable[_phase3 + (_phase >> 8)]) * decayVolume) >> 8;
   }
 
   if (mode == 4) {
     if ((_phase >> SAMPLE_PHASE_SHIFT) > sample3Length) _phase = 0;
     _sample = (char)pgm_read_byte_near(sample3Table + (_phase >> SAMPLE_PHASE_SHIFT));
-    // _sample = (_sample * wavetable[_phase2 >> 8]) >> 8;
     sample = (_sample * decayVolume) >> 8;
-    //sample2 = ((wavetable[_phase3 + (_phase >> 8)]) * decayVolume) >> 8;
   }
 
   if (mode == 5) {
     if ((_phase >> SAMPLE_PHASE_SHIFT) > sample4Length) _phase = 0;
     _sample = (char)pgm_read_byte_near(sample4Table + (_phase >> SAMPLE_PHASE_SHIFT)) + 128;
-    // _sample = (_sample * wavetable[_phase2 >> 8]) >> 8;
     sample = (_sample * decayVolume) >> 8;
-    // sample2 = ((wavetable[_phase3 + (_phase >> 8)]) * decayVolume) >> 8;
   }
 
   if (mode == 6) {
     if ((_phase >> SAMPLE_PHASE_SHIFT) > sampleLength) _phase = 0;
     _sample = (char)pgm_read_byte_near(sampleTable + (_phase >> SAMPLE_PHASE_SHIFT));
-    // _sample = (_sample * wavetable[_phase2 >> 8]) >> 8;
     sample = (_sample * decayVolume) >> 8;
-    // sample2 = ((wavetable[_phase3 + (_phase >> 8)]) * decayVolume) >> 8;
   }
 
   if (mode == 7) {
     if ((_phase >> SAMPLE_PHASE_SHIFT) > sample4Length) _phase = 0;
     _sample = (char)pgm_read_byte_near(sample4Table + (_phase >> SAMPLE_PHASE_SHIFT)) + 128;
-    // _sample = (_sample * wavetable[_phase2 >> 8]) >> 8;
     sample = (_sample * decayVolume) >> 8;
-    // sample2 = ((wavetable[_phase3 + (_phase >> 8)]) * decayVolume) >> 8;
   }
 
 
 }
 void loop() {
-  //if(analogValues[WS_2]<20) analogValues[WS_2]=0;
-  //FM + PHS DIST
-  // t&h + chord
-  // noise sample
   synthesis();
   renderDecay();
   trigDetect();
@@ -612,23 +450,15 @@ void trigDetect() { //rather trigger machine
 
   lastTrigState = trigState;
 
-  if (analogValues[0] < LOW_THRES)  trigState = 0; //, incr=11,_incr=6, bitShift=2, osc2offset=270;
-  else if (analogValues[0] > HIGH_THRES) trigState = 2; //, incr=24,_incr=6,bitShift=4,osc2offset=255;
-  else trigState = 1; //, incr=11,_incr=5,bitShift=4,osc2offset=255;
+  if (analogValues[0] < LOW_THRES)  trigState = 0;
+  else if (analogValues[0] > HIGH_THRES) trigState = 2;
+  else trigState = 1;
 
   if (lastTrigState != trigState) trigger(trigState, lastTrigState), _phase = 0;
 
-  /*
-    if(analogValues[0]<LOW_THRES)  mode=NOISE; //, incr=11,_incr=6, bitShift=2, osc2offset=270;
-    else if(analogValues[0]>HIGH_THRES) mode=TAH; //, incr=24,_incr=6,bitShift=4,osc2offset=255;
-    else mode = FM; //, incr=11,_incr=5,bitShift=4,osc2offset=255;
-  */
 }
 
-uint8_t trigger(uint8_t intensity_1, uint8_t intensity_2) {
-  //lastTriggerTime=triggerTime;
-  //triggerTime=some increment shit
-  //decayTime=triggerTime-lastTrigerTime;
+void trigger(uint8_t intensity_1, uint8_t intensity_2) {
   if (abs(intensity_1 - intensity_2) == 1) decayVolume = 128, decayVolume2 = 255;
   else decayVolume = 255, decayVolume2 = 150;
 
@@ -640,12 +470,8 @@ uint8_t analogChannelSequence[6] = {0, 1, 0, 2, 0, 3};
 uint8_t analogChannelReadIndex;
 
 void setDecay() {
- // decayTime2=analogValues[WS_2];
   if (analogValues[WS_2] > 100) decayTime = constrain(analogValues[WS_2] - 120, 1, 255), pitchEnv = 0;
-  else decayTime = (100 - analogValues[WS_2]), pitchEnv = 255; //decayTime;
-
-
-  // decayTime = analogValues[WS_2] + 1
+  else decayTime = (100 - analogValues[WS_2]), pitchEnv = 255;
 }
 ISR(ADC_vect) { // interupt triggered ad completion of ADC counter
   startupRead++;
@@ -676,14 +502,8 @@ ISR(ADC_vect) { // interupt triggered ad completion of ADC counter
       discarge charge built up in passive mixing ciruit using zener diodes
       because zeners have some higher unpredictable capacitance, various voltages might get stuck on the pin
     */
-    //  if(analogChannelRead!=0) - by mohlo vyresit celou situaci
-    // if( mode==PHASE_DIST && analogChannelRead!=PITCH){  // //this would somehow make the  reset pin trigger because the reset pin is already pulled to ground
 
-
-
-    if ( mode == NOISE) { // && analogChannelRead!=PITCH){//if(analogChannelRead==0){
-      //  bitWrite(PORTB,analogToDigitalPinMapping[analogChannelRead],1);
-      // renderDecay();
+    if ( mode == NOISE) {
     }
 
     else {
@@ -710,7 +530,6 @@ void renderDecay() {
       {
         decayCounter = 0;
         if (decayVolume > 0) decayVolume -= ((decayVolume >> 6) + 1);
-        //else decayVolume=255;//, _phase=0;
       }
     }
   }
@@ -722,30 +541,12 @@ void renderDecay() {
       {
         decayCounter2 = 0;
         if (decayVolume2 > 0) decayVolume2 -= ((decayVolume2 >> 6) + 1);
-        //else decayVolume=255;//, _phase=0;
       }
     }
   }
 
 }
 
-/*
-  void setFrequency(int _freq){ //set frequency of the interupt for primary oscillator
-  _freq=1024-_freq;
-  uint8_t preScaler=_freq>>7;
-  preScaler+=2; //*2
-  pwmIncrement=4;
-  _upIncrement=pwmIncrement*upIncrement;
-  _downIncrement=pwmIncrement*downIncrement;
-  for(uint8_t i=0;i<4;i++) bitWrite(TCCR1,CS10+i,bitRead(preScaler,i));
-  uint8_t compare=_freq;
-  bitWrite(compare,7,0);
-  if(quantizer){ // if quantizer was implemented
-  //compare=tuneTable[map(compare,0,127,0,6)];
-  }
-  OCR1A=compare+128;
-  }
-*/
 
 
 // #### FUNCTIONS TO ACCES ADC REGISTERS
