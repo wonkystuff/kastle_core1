@@ -147,9 +147,6 @@ setup(void)
   connectChannel(analogChannelRead);
   startConversion();
   _delay_us(100);
-  while (startupRead < 12) {
-    loop();
-  }
 }
 
 void
@@ -300,6 +297,7 @@ ISR(TIMER1_COMPA_vect)  // render primary oscillator in the interupt
   {
     _phase4 += frequency4;
   }
+
   if (mode == FM)
   {
     _phs = (_phase + (analogValues[WS_2] * wavetable[_phase2 >> 8])) >> 6;
@@ -481,65 +479,42 @@ setDecay(void)
 }
 
 ISR(ADC_vect)
-{ // interupt triggered ad completion of ADC counter
-  startupRead++;
-  if (!firstRead) { // discard first reading due to ADC multiplexer crosstalk
-    //update values and remember last values
-    lastAnalogValues[analogChannelRead] = analogValues[analogChannelRead];
-    analogValues[analogChannelRead] = getConversionResult() >> 2;
-    //set ADC MULTIPLEXER to read the next channel
-    lastAnalogChannelRead = analogChannelRead;
-    if (!analogChannelRead)
-    {
-      trigDetect();
-    }
-    analogChannelReadIndex++;
-    if (analogChannelReadIndex > 5)
-    {
-      analogChannelReadIndex = 0;
-    }
-    analogChannelRead = analogChannelSequence[analogChannelReadIndex];
-    connectChannel(analogChannelRead);
-    // set controll values if relevant (value changed)
-    if (lastAnalogChannelRead == PITCH && lastAnalogValues[PITCH] != analogValues[PITCH])
-    {
-      setFrequency(analogValues[PITCH]);
-      decayVolume2 = constrain(decayVolume2 + ((abs(lastAnalogValues[PITCH] - analogValues[PITCH]) << 3)), 0, 255); //constrain(mapLookup[,0,1015)); //
-    }
-    if (lastAnalogChannelRead == WS_1 && lastAnalogValues[WS_1] != analogValues[WS_1])
-    {
-      setFrequency2(analogValues[WS_1] << 2);
-      decayVolume = constrain(decayVolume + ((abs(lastAnalogValues[WS_1] - analogValues[WS_1]) << 2)), 0, 255);
-    }
-    if (lastAnalogChannelRead == WS_2 && lastAnalogValues[WS_2] != analogValues[WS_2])
-    {
-      setDecay();
-    }
-    firstRead = true;
-    //start the ADC - at completion the interupt will be called again
-    startConversion();
-  }
-  else
+{
+  // interupt triggered ad completion of ADC counter
+  //update values and remember last values
+  lastAnalogValues[analogChannelRead] = analogValues[analogChannelRead];
+  analogValues[analogChannelRead] = getConversionResult() >> 2;
+  //set ADC MULTIPLEXER to read the next channel
+  lastAnalogChannelRead = analogChannelRead;
+  if (!analogChannelRead)
   {
-    /*
-      at the first reading off the ADX (which will not used)
-      something else will happen the input pin will briefly turn to output to
-      discarge charge built up in passive mixing ciruit using zener diodes
-      because zeners have some higher unpredictable capacitance, various voltages might get stuck on the pin
-    */
-
-    if ( mode != NOISE)
-    {
-      if (analogValues[analogChannelRead] < 200)
-      {
-        bitWrite(DDRB, analogToDigitalPinMapping[analogChannelRead], 1);
-      }
-      bitWrite(DDRB, analogToDigitalPinMapping[analogChannelRead], 0);
-      bitWrite(PORTB, analogToDigitalPinMapping[analogChannelRead], 0);
-    }
-    firstRead = false;
-    startConversion();
+    trigDetect();
   }
+  analogChannelReadIndex++;
+  if (analogChannelReadIndex > 5)
+  {
+    analogChannelReadIndex = 0;
+  }
+  analogChannelRead = analogChannelSequence[analogChannelReadIndex];
+  connectChannel(analogChannelRead);
+  // set controll values if relevant (value changed)
+  if (lastAnalogChannelRead == PITCH && lastAnalogValues[PITCH] != analogValues[PITCH])
+  {
+    setFrequency(analogValues[PITCH]);
+    decayVolume2 = constrain(decayVolume2 + ((abs(lastAnalogValues[PITCH] - analogValues[PITCH]) << 3)), 0, 255); //constrain(mapLookup[,0,1015)); //
+  }
+  if (lastAnalogChannelRead == WS_1 && lastAnalogValues[WS_1] != analogValues[WS_1])
+  {
+    setFrequency2(analogValues[WS_1] << 2);
+    decayVolume = constrain(decayVolume + ((abs(lastAnalogValues[WS_1] - analogValues[WS_1]) << 2)), 0, 255);
+  }
+  if (lastAnalogChannelRead == WS_2 && lastAnalogValues[WS_2] != analogValues[WS_2])
+  {
+    setDecay();
+  }
+  firstRead = true;
+  //start the ADC - at completion the interupt will be called again
+  startConversion();
 }
 
 #define DECAYRATE  (3u)
@@ -555,9 +530,13 @@ renderDecay(void)
     {
       decayCounter = 0;
       if (decayVolume > 0)
+      {
         decayVolume -= ((decayVolume >> 6) + 1);
+      }
       if (decayVolume2 > 0)
+      {
         decayVolume2 -= ((decayVolume2 >> 6) + 1);
+      }
     }
   }
 }
