@@ -123,12 +123,9 @@ const uint8_t PROGMEM sinetable[128] = {
 //the actual table that is read to generate the sound
 uint8_t wavetable[256];
 
-uint8_t startupRead = 0;
-
 uint8_t decayVolume;
-uint16_t decayTime = 50;
-uint8_t _sample;
-uint8_t decayVolume2 = 0;
+uint8_t decayVolume2;
+uint16_t decayTime;
 
 void
 setup(void)
@@ -177,7 +174,6 @@ setTimers(void)
 
   sei();
 }
-
 
 void
 writeWave(int wave)
@@ -263,12 +259,11 @@ zeroWave(void)
   }
 }
 
-uint8_t  sample, sample90;
-uint16_t _phase, _lastPhase;
+uint16_t _phase;
 uint16_t frequency;
 uint8_t  sample2;
-uint16_t _phase2, _phase4, _phase5, _phase6;
-uint16_t frequency2, frequency4, frequency5, frequency6;
+uint16_t _phase2, _phase4;
+uint16_t frequency2, frequency4;
 uint8_t  _phs;
 uint8_t  _phase3;
 uint8_t  pitchEnv;
@@ -277,10 +272,14 @@ uint8_t  pitchEnv;
 
 ISR(TIMER1_COMPA_vect)  // render primary oscillator in the interupt
 {
-  OCR0B = sample;//(sample+sample2)>>1;
-  OCR0A = sample2; //_phs;// sample90;
+  static uint8_t  sample;   // Needs to persist from one sample-tick to the next
+  uint8_t _sample=0;
 
-  //_lastPhase=_phase;
+  // output the samples first because there's gonna be a lot of jitter in
+  // the following code...
+  OCR0B = sample;
+  OCR0A = sample2;
+
   if (pitchEnv)
   {
     _phase  += (frequency + (decayVolume >> 1));
@@ -362,6 +361,7 @@ ISR(TIMER1_COMPA_vect)  // render primary oscillator in the interupt
   }
   sample = (_sample * decayVolume) >> 8;
   renderDecay();
+  synthesis();
 }
 
 void
@@ -390,43 +390,42 @@ setFrequency(uint16_t input)
     frequency = (input) + (1 << SAMPLE_PHASE_SHIFT);
   else
     frequency = (input << 2) + (1 << SAMPLE_PHASE_SHIFT);
-  frequency5 = frequency;
 }
 
-uint8_t _sample2, _lastSample2;
 void
 synthesis(void)
 {
-    if ((_phase3 >> 2) >= (analogValues[WS_1]) << 4)
-    {
-      _phase3 = 0;
-    }
-    _lastSample2 = sample2;
-    _sample2 = (char)pgm_read_byte_near(sampleTable + (_phase3) ) + 128;
+  uint8_t _sample2, _lastSample2;
+  if ((_phase3 >> 2) >= (analogValues[WS_1]) << 4)
+  {
+    _phase3 = 0;
+  }
+  _lastSample2 = sample2;
+  _sample2 = (char)pgm_read_byte_near(sampleTable + (_phase3) ) + 128;
 
-    if (analogValues[PITCH] > wavetable[(_phase4 >> 9) + (_sample2>>5)])
-    {
-      _sample2 = _lastSample2;
-    }
-    else
-    {
-      _sample2 = abs(_sample2 - _lastSample2);
-    }
-    sample2 =  ((_sample2 * (decayVolume2)) >> 8);
+  if (analogValues[PITCH] > wavetable[(_phase4 >> 9) + (_sample2>>5)])
+  {
+    _sample2 = _lastSample2;
+  }
+  else
+  {
+    _sample2 = abs(_sample2 - _lastSample2);
+  }
+  sample2 =  ((_sample2 * (decayVolume2)) >> 8);
 }
 
 void
 loop(void)
 {
-  synthesis();
+  // <twiddles fingers>
 }
 
-uint8_t trigState = 0;
-uint8_t lastTrigState = 0;
 void
 trigDetect(void)
 {
   //rather trigger machine
+  static uint8_t trigState = 0;
+  static uint8_t lastTrigState = 0;
 
   lastTrigState = trigState;
 
