@@ -5,8 +5,7 @@
  * https://wonkystuff.net/
  *
  * History:
- * 1. Removed commented-out code for clarity, fixed bug which prevented compilation and tidied warnings.
- *    in Arduino 1.8.13
+ * See git log.
  */
 
 /*
@@ -72,31 +71,15 @@ Kastle Drum Features
 #include "TR_HH_AT.h"
 
 //global variables
-#define WSMAP_POINTS 5
-uint16_t wsMap[10] = {
-  0, 63, 127, 191, 234,   15, 100, 160, 210, 254
-};
 
-
-uint8_t _out;
-uint16_t time;
 uint8_t mode;
 uint8_t analogChannelRead = 1;
 uint8_t analogValues[4];
 uint8_t lastAnalogValues[4];
 uint8_t out;
-uint8_t pwmCounter;
-uint8_t _clocks;
-bool flop;
-uint8_t incr = 6, _incr = 6;
-uint8_t lastOut;
-uint8_t bitShift = 3;
-uint16_t osc2offset = 255;
 uint8_t lastAnalogChannelRead;
 bool firstRead = false;
 
-uint8_t pwmIncrement, _upIncrement, _downIncrement, upIncrement, downIncrement;
-bool quantizer;
 const uint8_t analogToDigitalPinMapping[4] = {
   PORTB5, PORTB2, PORTB4, PORTB3
 };
@@ -114,10 +97,17 @@ const uint8_t analogToDigitalPinMapping[4] = {
 #define LOW_MIX 300
 #define HIGH_MIX 900
 
+// Some definitions relevant to the
+#define KNOB_A  (0u)
+#define KNOB_B  (1u)
+#define KNOB_C  (3u)
+#define KNOB_D  (2u)
+
 //defines for synth parameters
-#define PITCH 3
-#define WS_1 2
-#define WS_2 1
+#define PITCH   KNOB_C
+#define WS_1    KNOB_D
+#define WS_2    KNOB_B
+#define TRIG    KNOB_A
 
 const uint8_t PROGMEM sinetable[128] = {
   0,   0,   0,   0,   1,   1,   1,   2,   2,   3,   4,   5,   5,   6,   7,   9,
@@ -133,40 +123,17 @@ const uint8_t PROGMEM sinetable[128] = {
 //the actual table that is read to generate the sound
 uint8_t wavetable[256];
 
-
-uint32_t curveMap(uint8_t value, uint8_t numberOfPoints, uint16_t * tableMap) {
-  uint32_t inMin = 0, inMax = 255, outMin = 0, outMax = 255;
-  for (int i = 0; i < numberOfPoints - 1; i++) {
-    if (value >= tableMap[i] && value <= tableMap[i + 1]) {
-      inMax = tableMap[i + 1];
-      inMin = tableMap[i];
-      outMax = tableMap[numberOfPoints + i + 1];
-      outMin = tableMap[numberOfPoints + i];
-      i = numberOfPoints + 10;
-    }
-  }
-  return map(value, inMin, inMax, outMin, outMax);
-}
-
-
-void createLookup() {
-  for (uint16_t i = 0; i < 256; i++) {
-    // mapLookup[i]=curveMap(i,WSMAP_POINTS,wsMap);
-  }
-}
-
-
-bool XYmode;
 uint8_t startupRead = 0;
 
 uint8_t decayVolume;
 uint16_t decayTime = 50;
 uint8_t _sample;
-uint8_t _saw, _lastSaw;
-
 uint8_t decayVolume2 = 0;
 
-void setup()  { //happends at the startup
+void
+setup(void)
+{
+  //happens at the startup
   writeWave(0);
   digitalWrite(5, HIGH); //turn on pull up resistor for the reset pin
   //set outputs
@@ -176,36 +143,30 @@ void setup()  { //happends at the startup
   setTimers(); //setup interrupts
 
   //setup ADC and run it in interrupt
-  init();
+  initADC();
   connectChannel(analogChannelRead);
   startConversion();
   _delay_us(100);
   while (startupRead < 12) {
     loop();
   }
-  XYmode = true; //if all pots are hight and mode is HIGH than render XY mode instead
-  if (analogValues[0] < HIGH_THRES)  XYmode = false;
-  for (uint8_t i = 1; i < 4; i++) if (analogValues[i] < 200) XYmode = false; //HIGH_THRES
-
 }
 
-void setTimers(void)
+void
+setTimers(void)
 {
   PLLCSR |= (1 << PLLE);               // Enable PLL (64 MHz)
   _delay_us(100);                      // Wait for a steady state
   while (!(PLLCSR & (1 << PLOCK)));    // Ensure PLL lock
   PLLCSR |= (1 << PCKE);               // Enable PLL as clock source for timer 1
-  // low speed clock does not work with PLL source
-//  PLLCSR |= (1 << LSM);                //low speed mode 32mhz
+
   cli();                               // Interrupts OFF (disable interrupts globally)
 
+  // Setup Timer 0 for fast PWM output on both A & B channels
+  TCCR0A = _BV(COM0A1) | _BV(COM0B1) | _BV(WGM00) | _BV(WGM01);
+  TCCR0B = _BV(CS00);
 
-  TCCR0A = 2 << COM0A0 | 2 << COM0B0 | 3 << WGM00;
-  TCCR0B = 0 << WGM02 | 1 << CS00;
-
-
-
-  //  setup timer 0 to run fast for audiorate interrupt
+  //  setup timer 1 to run fast for audiorate interrupt
 
   TCCR1 = 0;                  //stop the timer
   TCNT1 = 0;                  //zero the timer
@@ -220,11 +181,10 @@ void setTimers(void)
   sei();
 }
 
-uint16_t clocks() {
-  //return _clocks;
-  return TCNT0 | (_clocks << 8);
-}
-void writeWave(int wave) {
+
+void
+writeWave(int wave)
+{
   switch (wave) {
     case 0:
       sineWave();
@@ -246,199 +206,282 @@ void writeWave(int wave) {
 }
 
 //functions to populate the wavetable
-void sineWave() {                                       //too costly to calculate on the fly, so it reads from the sine table. We use 128 values, then mirror them to get the whole cycle
-  for (int i = 0; i < 128; ++i) {
+void
+sineWave(void)
+{
+  // too costly to calculate on the fly, so it reads from the sine table. We use 128 values, then mirror them to get the whole cycle
+  for (int i = 0; i < 128; ++i)
+  {
     wavetable[i] = pgm_read_byte_near(sinetable + i);
   }
   wavetable[128] = 255;
-  for (int i = 129; i < 256; ++i) {
+  for (int i = 129; i < 256; ++i)
+  {
     wavetable[i] = wavetable[256 - i] ;
   }
 }
-void sawtoothWave() {
-  for (int i = 0; i < 256; ++i) {
+
+void
+sawtoothWave(void)
+{
+  for (int i = 0; i < 256; ++i)
+  {
     wavetable[i] = i; // sawtooth
   }
 }
-void triangleWave() {
-  for (int i = 0; i < 128; ++i) {
+
+void
+triangleWave(void)
+{
+  for (int i = 0; i < 128; ++i)
+  {
     wavetable[i] = i * 2;
   }
   int value = 255;
-  for (int i = 128; i < 256; ++i) {
+  for (int i = 128; i < 256; ++i)
+  {
     wavetable[i] = value;
     value -= 2;
   }
 }
-void squareWave() {
+
+void
+squareWave(void)
+{
   for (int i = 0; i < 128; ++i) {
     wavetable[i] = 255;
   }
-  for (int i = 128; i < 256; ++i) {
+  for (int i = 128; i < 256; ++i)
+  {
     wavetable[i] = 1;                  //0 gives problems (offset and different freq), related to sample  = ((wavetable[phase >> 8]*amplitude)>>8);
   }
 }
-void zeroWave() {
-  for (int i = 0; i < 256; ++i) {
+
+void
+zeroWave(void)
+{
+  for (int i = 0; i < 256; ++i)
+  {
     wavetable[i] = 1;                  //0 gives problems
   }
 }
 
-byte sample, sample90;
-unsigned int _phase, _lastPhase;
-unsigned int frequency;
-byte sample2;
-unsigned int _phase2, _phase4, _phase5, _phase6;
-unsigned int frequency2, frequency4, frequency5, frequency6;
-uint8_t _phs;
-uint8_t _phase3;
-uint8_t pitchEnv;
+uint8_t  sample, sample90;
+uint16_t _phase, _lastPhase;
+uint16_t frequency;
+uint8_t  sample2;
+uint16_t _phase2, _phase4, _phase5, _phase6;
+uint16_t frequency2, frequency4, frequency5, frequency6;
+uint8_t  _phs;
+uint8_t  _phase3;
+uint8_t  pitchEnv;
 
 #define SAMPLE_PHASE_SHIFT 3
 
 ISR(TIMER1_COMPA_vect)  // render primary oscillator in the interupt
 {
-  OCR0A = sample;//(sample+sample2)>>1;
-  OCR0B = sample2;//_phs;// sample90;
+  OCR0B = sample;//(sample+sample2)>>1;
+  OCR0A = sample2; //_phs;// sample90;
 
   //_lastPhase=_phase;
-  if (pitchEnv) {
-    _phase += (frequency + (decayVolume));
-    _phase3 += (frequency + (decayVolume)); //frequency;//
-    _phase2 += (frequency2 + (decayVolume));
+  if (pitchEnv)
+  {
+    _phase  += (frequency + (decayVolume >> 1));
+    _phase3 += (frequency + (decayVolume >> 1)); //frequency;//
+    _phase2 += (frequency2 + (decayVolume >> 1));
   }
-  else {
-    _phase += frequency;
+  else
+  {
+    _phase  += frequency;
     _phase3 += frequency;
     _phase2 += frequency2;
   }
   if(!(_phase%4))
+  {
     _phase4 += frequency4;
-
-  if (mode == FM) {
+  }
+  if (mode == FM)
+  {
     _phs = (_phase + (analogValues[WS_2] * wavetable[_phase2 >> 8])) >> 6;
     _sample = wavetable[_phs];
-  } else if (mode == NOISE) {
-    if ((_phase >> 2) >= (analogValues[WS_2] - 100u) << 5) {
+  }
+  else if (mode == NOISE)
+  {
+    if ((_phase >> 2) >= (analogValues[WS_2] - 100u) << 5)
+    {
       _phase = 0;
     }
     _sample = (char)pgm_read_byte_near(sampleTable + (_phase >> 2)) + 128;
     _sample = (_sample * wavetable[_phase2 >> 8]) >> 8;
-  } else if (mode == TAH) {
+  }
+  else if (mode == TAH)
+  {
     if ((_phase2 >> 8) < analogValues[WS_2] + 5u)
+    {
       _phs = _phase >> 8;
+    }
     _sample = wavetable[_phs];
-  } else if (mode == 3) {
+  }
+  else if (mode == 3)
+  {
     if ((_phase >> SAMPLE_PHASE_SHIFT) > sample2Length)
+    {
       _phase = 0;
+    }
     _sample = (char)pgm_read_byte_near(sample2Table + (_phase >> SAMPLE_PHASE_SHIFT)) + 128;
-  } else if (mode == 4) {
+  }
+  else if (mode == 4)
+  {
     if ((_phase >> SAMPLE_PHASE_SHIFT) > sample3Length)
+    {
       _phase = 0;
+    }
     _sample = (char)pgm_read_byte_near(sample3Table + (_phase >> SAMPLE_PHASE_SHIFT)) + 128;
-  } else if (mode == 5) {
+  }
+  else if (mode == 5)
+  {
     if ((_phase >> SAMPLE_PHASE_SHIFT) > sample4Length)
+    {
       _phase = 0;
+    }
     _sample = (char)pgm_read_byte_near(sample4Table + (_phase >> SAMPLE_PHASE_SHIFT)) + 128;
-  } else if (mode == 6) {
+  }
+  else if (mode == 6)
+  {
     if ((_phase >> SAMPLE_PHASE_SHIFT) > sampleLength)
+    {
       _phase = 0;
+    }
     _sample = (char)pgm_read_byte_near(sampleTable + (_phase >> SAMPLE_PHASE_SHIFT)) + 128;
-  } else if (mode == 7) {
+  }
+  else if (mode == 7)
+  {
     if ((_phase >> SAMPLE_PHASE_SHIFT) > sample4Length)
+    {
       _phase = 0;
+    }
     _sample = (char)pgm_read_byte_near(sample4Table + (_phase >> SAMPLE_PHASE_SHIFT)) + 128;
   }
   sample = (_sample * decayVolume) >> 8;
   renderDecay();
 }
 
-uint16_t sampleEnd;
-const uint8_t multiplier[24] = {
-  2, 2, 2, 3, 1, 2, 4, 4, 3, 4, 5, 2, 1, 5, 6, 8, 3, 8, 7, 8, 7, 6, 8, 16
-};
-void setFrequency2(uint16_t input) {
-
+void
+setFrequency2(uint16_t input)
+{
   mode = input >> 7;
 
-  if (mode > 6) bitWrite(TCCR0B, CS00, 0), bitWrite(TCCR0B, CS01, 1);
-  else bitWrite(TCCR0B, CS00, 1), bitWrite(TCCR0B, CS01, 0);
-
+  if (mode > 6)
+  {
+    TCCR0B = _BV(CS01);
+  }
+  else
+  {
+    TCCR0B = _BV(CS00);
+  }
   frequency2 = (input << 4) + 1;
   frequency4 = 512 - input;
 }
 
-void setLength(uint8_t _length) {
-  sampleEnd = map(_length, 0, 255, 0, sampleLength);
-}
-
-void setFrequency(uint16_t input) {
-  int addEnv = 0; //((pitchEnv*decayVolume)>>7);
-  if (   mode == NOISE ) frequency = ((input - 200) << 2) + 1; //NOISE
-  else if (mode > 3) frequency = (input) + 1;
-  else frequency = ((input + addEnv) << 2) + 1;
+void
+setFrequency(uint16_t input)
+{
+  if (mode == NOISE)
+    frequency = ((input - 200) << 2) + 1; //NOISE
+  else if (mode > 2)
+    frequency = (input) + (1 << SAMPLE_PHASE_SHIFT);
+  else
+    frequency = (input << 2) + (1 << SAMPLE_PHASE_SHIFT);
   frequency5 = frequency;
 }
 
-int ultimateFold(int _input) {
-  int _output = _input;
-  while (_output > 255 || _output < 0) {
-    if (_output > 255) _output = 255 - (_output - 255);
-    if (_output < 0) _output = 0 - _output;
-  }
-  return _output;
-}
-
 uint8_t _sample2, _lastSample2;
-void synthesis() {
-    if ((_phase3 >> 2) >= (analogValues[WS_1]) << 4) {
+void
+synthesis(void)
+{
+    if ((_phase3 >> 2) >= (analogValues[WS_1]) << 4)
+    {
       _phase3 = 0;
     }
     _lastSample2 = sample2;
     _sample2 = (char)pgm_read_byte_near(sampleTable + (_phase3) ) + 128;
 
-    if (analogValues[PITCH] > wavetable[(_phase4 >> 9) + (_sample2>>5)]) _sample2 = _lastSample2;
-    else _sample2 = abs(_sample2 - _lastSample2);
+    if (analogValues[PITCH] > wavetable[(_phase4 >> 9) + (_sample2>>5)])
+    {
+      _sample2 = _lastSample2;
+    }
+    else
+    {
+      _sample2 = abs(_sample2 - _lastSample2);
+    }
     sample2 =  ((_sample2 * (decayVolume2)) >> 8);
 }
 
-void loop() {
+void
+loop(void)
+{
   synthesis();
 }
 
 uint8_t trigState = 0;
 uint8_t lastTrigState = 0;
-void trigDetect() { //rather trigger machine
+void
+trigDetect(void)
+{
+  //rather trigger machine
 
   lastTrigState = trigState;
 
-  if (analogValues[0] < LOW_THRES)
+  if (analogValues[TRIG] < LOW_THRES)
+  {
     trigState = 0;
-  else if (analogValues[0] > HIGH_THRES)
+  }
+  else if (analogValues[TRIG] > HIGH_THRES)
+  {
     trigState = 2;
+  }
   else
+  {
     trigState = 1;
+  }
 
   if (lastTrigState != trigState)
+  {
     trigger(trigState, lastTrigState), _phase = 0;
+  }
 }
 
-void trigger(uint8_t intensity_1, uint8_t intensity_2) {
-  if (abs(intensity_1 - intensity_2) == 1) decayVolume = 128, decayVolume2 = 255;
-  else decayVolume = 255, decayVolume2 = 150;
-
-
+void
+trigger(uint8_t intensity_1, uint8_t intensity_2)
+{
+  if (abs(intensity_1 - intensity_2) == 1)
+  {
+    decayVolume = 128, decayVolume2 = 255;
+  }
+  else
+  {
+     decayVolume = 255, decayVolume2 = 150;
+  }
 }
 
-
-uint8_t analogChannelSequence[6] = {0, 1, 0, 2, 0, 3};
+uint8_t analogChannelSequence[6] = {TRIG, PITCH, TRIG, WS_1, TRIG, WS_2};
 uint8_t analogChannelReadIndex;
 
-void setDecay() {
-  if (analogValues[WS_2] > 100) decayTime = constrain(analogValues[WS_2] - 120, 1, 255), pitchEnv = 0;
-  else decayTime = (100 - analogValues[WS_2]), pitchEnv = 255;
+void
+setDecay(void)
+{
+  if (analogValues[WS_2] > 100)
+  {
+    decayTime = constrain(analogValues[WS_2] - 120, 1, 255), pitchEnv = 0;
+  }
+  else
+  {
+    decayTime = (100 - analogValues[WS_2]), pitchEnv = 255;
+  }
 }
-ISR(ADC_vect) { // interupt triggered ad completion of ADC counter
+
+ISR(ADC_vect)
+{ // interupt triggered ad completion of ADC counter
   startupRead++;
   if (!firstRead) { // discard first reading due to ADC multiplexer crosstalk
     //update values and remember last values
@@ -447,24 +490,37 @@ ISR(ADC_vect) { // interupt triggered ad completion of ADC counter
     //set ADC MULTIPLEXER to read the next channel
     lastAnalogChannelRead = analogChannelRead;
     if (!analogChannelRead)
+    {
       trigDetect();
+    }
     analogChannelReadIndex++;
     if (analogChannelReadIndex > 5)
+    {
       analogChannelReadIndex = 0;
+    }
     analogChannelRead = analogChannelSequence[analogChannelReadIndex];
     connectChannel(analogChannelRead);
     // set controll values if relevant (value changed)
     if (lastAnalogChannelRead == PITCH && lastAnalogValues[PITCH] != analogValues[PITCH])
-      setFrequency(analogValues[PITCH] << 2), decayVolume2 = constrain(decayVolume2 + ((abs(lastAnalogValues[PITCH] - analogValues[PITCH]) << 3)), 0, 255);; //constrain(mapLookup[,0,1015)); //
+    {
+      setFrequency(analogValues[PITCH]);
+      decayVolume2 = constrain(decayVolume2 + ((abs(lastAnalogValues[PITCH] - analogValues[PITCH]) << 3)), 0, 255); //constrain(mapLookup[,0,1015)); //
+    }
     if (lastAnalogChannelRead == WS_1 && lastAnalogValues[WS_1] != analogValues[WS_1])
-      setFrequency2(analogValues[WS_1] << 2), decayVolume = constrain(decayVolume + ((abs(lastAnalogValues[WS_1] - analogValues[WS_1]) << 2)), 0, 255);
+    {
+      setFrequency2(analogValues[WS_1] << 2);
+      decayVolume = constrain(decayVolume + ((abs(lastAnalogValues[WS_1] - analogValues[WS_1]) << 2)), 0, 255);
+    }
     if (lastAnalogChannelRead == WS_2 && lastAnalogValues[WS_2] != analogValues[WS_2])
+    {
       setDecay();
+    }
     firstRead = true;
     //start the ADC - at completion the interupt will be called again
     startConversion();
   }
-  else {
+  else
+  {
     /*
       at the first reading off the ADX (which will not used)
       something else will happen the input pin will briefly turn to output to
@@ -472,49 +528,44 @@ ISR(ADC_vect) { // interupt triggered ad completion of ADC counter
       because zeners have some higher unpredictable capacitance, various voltages might get stuck on the pin
     */
 
-    if ( mode == NOISE) {
-    }
-
-    else {
-      if (analogValues[analogChannelRead] < 200) bitWrite(DDRB, analogToDigitalPinMapping[analogChannelRead], 1);
+    if ( mode != NOISE)
+    {
+      if (analogValues[analogChannelRead] < 200)
+      {
+        bitWrite(DDRB, analogToDigitalPinMapping[analogChannelRead], 1);
+      }
       bitWrite(DDRB, analogToDigitalPinMapping[analogChannelRead], 0);
       bitWrite(PORTB, analogToDigitalPinMapping[analogChannelRead], 0);
     }
     firstRead = false;
     startConversion();
-
   }
 }
 
+#define DECAYRATE  (3u)
 
-uint16_t decayCounter = 0;
+void
+renderDecay(void)
+{
+  static uint16_t decayCounter = 0;
 
-uint16_t decayCounter2 = 0;
-
-void renderDecay() {
   if (decayTime != 0) {
-    decayCounter += 1;
+    decayCounter += DECAYRATE;
     if (decayCounter >= decayTime)
     {
       decayCounter = 0;
       if (decayVolume > 0)
         decayVolume -= ((decayVolume >> 6) + 1);
-    }
-
-    decayCounter2 += 1;
-    if (decayCounter2 >= (decayTime))
-    {
-      decayCounter2 = 0;
       if (decayVolume2 > 0)
         decayVolume2 -= ((decayVolume2 >> 6) + 1);
     }
   }
 }
 
-
-
 // #### FUNCTIONS TO ACCES ADC REGISTERS
-void init() {
+void
+initADC(void)
+{
 
   ADMUX  = 0;
   bitWrite(ADCSRA, ADEN, 1); //adc enabled
@@ -528,24 +579,22 @@ void init() {
 
 
 // channel 8 can be used to measure the temperature of the chip
-void connectChannel(uint8_t number) {
+void
+connectChannel(uint8_t number)
+{
   ADMUX &= (11110000);
   ADMUX |= number;
 }
 
-void startConversion() {
+void
+startConversion(void)
+{
   bitWrite(ADCSRA, ADSC, 1); //start conversion
 }
 
-bool isConversionFinished() {
-  return (ADCSRA & (1 << ADIF));
-}
-
-bool isConversionRunning() {
-  return !(ADCSRA & (1 << ADIF));
-}
-
-uint16_t getConversionResult() {
+uint16_t
+getConversionResult(void)
+{
   uint16_t result = ADCL;
   return result | (ADCH << 8);
 }
