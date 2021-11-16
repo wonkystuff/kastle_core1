@@ -76,28 +76,20 @@ uint8_t mode;
 uint8_t analogChannelRead = 1;
 uint8_t analogValues[4];
 uint8_t lastAnalogValues[4];
-uint8_t out;
 uint8_t lastAnalogChannelRead;
-bool firstRead = false;
-
-const uint8_t analogToDigitalPinMapping[4] = {
-  PORTB5, PORTB2, PORTB4, PORTB3
-};
-
 
 //defines for synth types
 //all are dual oscillator setups -
-#define NOISE 1 // phase distortion -
-#define FM 0 //aka phase modulation
-#define TAH 2 //aka track & hold modulation (downsampling with T&H)
+#define NOISE (1u) // phase distortion -
+#define FM    (0u) // aka phase modulation
+#define TAH   (2u) // aka track & hold modulation (downsampling with T&H)
 
 
-#define LOW_THRES 150
-#define HIGH_THRES 162
-#define LOW_MIX 300
-#define HIGH_MIX 900
+#define LOW_THRES  (150u)
+#define HIGH_THRES (162u)
 
-// Some definitions relevant to the
+// Some definitions relevant to the core1.æ - mapping to
+// physical knob labels
 #define KNOB_A  (0u)
 #define KNOB_B  (1u)
 #define KNOB_C  (3u)
@@ -105,9 +97,9 @@ const uint8_t analogToDigitalPinMapping[4] = {
 
 //defines for synth parameters
 #define PITCH   KNOB_C
-#define WS_1    KNOB_D
-#define WS_2    KNOB_B
-#define TRIG    KNOB_A
+#define SND_SEL KNOB_D
+#define DECAY   KNOB_A
+#define TRIG    KNOB_B
 
 const uint8_t PROGMEM sinetable[128] = {
   0,   0,   0,   0,   1,   1,   1,   2,   2,   3,   4,   5,   5,   6,   7,   9,
@@ -162,10 +154,10 @@ setTimers(void)
 
   //  setup timer 1 to run fast for audiorate interrupt
 
-  TCCR1 = 0;                  //stop the timer
-  TCNT1 = 0;                  //zero the timer
-  GTCCR = _BV(PSR1);          //reset the prescaler
-  OCR1A = 255;                //set the compare value
+  TCCR1 = 0;                  // stop the timer
+  TCNT1 = 0;                  // zero the timer
+  GTCCR = _BV(PSR1);          // reset the prescaler
+  OCR1A = 255;                // set the compare value
   OCR1C = 255;
 
   TIMSK = _BV(OCIE1A);// | _BV(TOIE0);    //TOIE0    //interrupt on Compare Match A
@@ -198,7 +190,7 @@ writeWave(int wave)
   }
 }
 
-//functions to populate the wavetable
+// functions to populate the wavetable
 void
 sineWave(void)
 {
@@ -260,13 +252,15 @@ zeroWave(void)
 }
 
 uint16_t _phase;
-uint16_t frequency;
-uint8_t  sample2;
-uint16_t _phase2, _phase4;
-uint16_t frequency2, frequency4;
+uint16_t _phase2;
+uint16_t _phase4;
 uint8_t  _phs;
 uint8_t  _phase3;
+uint16_t frequency;
+uint16_t frequency2;
+uint16_t frequency4;
 uint8_t  pitchEnv;
+uint8_t  sample2;
 
 #define SAMPLE_PHASE_SHIFT 3
 
@@ -282,8 +276,8 @@ ISR(TIMER1_COMPA_vect)  // render primary oscillator in the interupt
 
   if (pitchEnv)
   {
-    _phase  += (frequency + (decayVolume >> 1));
-    _phase3 += (frequency + (decayVolume >> 1)); //frequency;//
+    _phase  += (frequency  + (decayVolume >> 1));
+    _phase3 += (frequency  + (decayVolume >> 1)); //frequency;//
     _phase2 += (frequency2 + (decayVolume >> 1));
   }
   else
@@ -299,12 +293,12 @@ ISR(TIMER1_COMPA_vect)  // render primary oscillator in the interupt
 
   if (mode == FM)
   {
-    _phs = (_phase + (analogValues[WS_2] * wavetable[_phase2 >> 8])) >> 6;
+    _phs = (_phase + (analogValues[DECAY] * wavetable[_phase2 >> 8])) >> 6;
     _sample = wavetable[_phs];
   }
   else if (mode == NOISE)
   {
-    if ((_phase >> 2) >= (analogValues[WS_2] - 100u) << 5)
+    if ((_phase >> 2) >= (analogValues[DECAY] - 100u) << 5)
     {
       _phase = 0;
     }
@@ -313,7 +307,7 @@ ISR(TIMER1_COMPA_vect)  // render primary oscillator in the interupt
   }
   else if (mode == TAH)
   {
-    if ((_phase2 >> 8) < analogValues[WS_2] + 5u)
+    if ((_phase2 >> 8) < analogValues[DECAY] + 5u)
     {
       _phs = _phase >> 8;
     }
@@ -367,8 +361,6 @@ ISR(TIMER1_COMPA_vect)  // render primary oscillator in the interupt
 void
 setFrequency2(uint16_t input)
 {
-  mode = input >> 7;
-
   if (mode > 6)
   {
     TCCR0B = _BV(CS01);
@@ -395,8 +387,9 @@ setFrequency(uint16_t input)
 void
 synthesis(void)
 {
-  uint8_t _sample2, _lastSample2;
-  if ((_phase3 >> 2) >= (analogValues[WS_1]) << 4)
+  uint8_t _sample2;
+  uint8_t _lastSample2;
+  if ((_phase3 >> 2) >= (analogValues[SND_SEL]) << 4)
   {
     _phase3 = 0;
   }
@@ -444,7 +437,8 @@ trigDetect(void)
 
   if (lastTrigState != trigState)
   {
-    trigger(trigState, lastTrigState), _phase = 0;
+    trigger(trigState, lastTrigState);
+    _phase = 0;
   }
 }
 
@@ -453,29 +447,34 @@ trigger(uint8_t intensity_1, uint8_t intensity_2)
 {
   if (abs(intensity_1 - intensity_2) == 1)
   {
-    decayVolume = 128, decayVolume2 = 255;
+    decayVolume = 128;
+    decayVolume2 = 255;
   }
   else
   {
-     decayVolume = 255, decayVolume2 = 150;
+     // difference is 2
+     decayVolume = 255;
+     decayVolume2 = 150;
   }
 }
-
-uint8_t analogChannelSequence[6] = {TRIG, PITCH, TRIG, WS_1, TRIG, WS_2};
-uint8_t analogChannelReadIndex;
 
 void
 setDecay(void)
 {
-  if (analogValues[WS_2] > 100)
+  if (analogValues[DECAY] > 100)
   {
-    decayTime = constrain(analogValues[WS_2] - 120, 1, 255), pitchEnv = 0;
+    decayTime = constrain(analogValues[DECAY] - 120, 1, 255);
+    pitchEnv = 0;
   }
   else
   {
-    decayTime = (100 - analogValues[WS_2]), pitchEnv = 255;
+    decayTime = (100 - analogValues[DECAY]);
+    pitchEnv = 255;
   }
 }
+
+const uint8_t analogChannelSequence[6] = {TRIG, PITCH, TRIG, SND_SEL, TRIG, DECAY};
+uint8_t analogChannelReadIndex;
 
 ISR(ADC_vect)
 {
@@ -502,16 +501,16 @@ ISR(ADC_vect)
     setFrequency(analogValues[PITCH]);
     decayVolume2 = constrain(decayVolume2 + ((abs(lastAnalogValues[PITCH] - analogValues[PITCH]) << 3)), 0, 255); //constrain(mapLookup[,0,1015)); //
   }
-  if (lastAnalogChannelRead == WS_1 && lastAnalogValues[WS_1] != analogValues[WS_1])
+  if (lastAnalogChannelRead == SND_SEL && lastAnalogValues[SND_SEL] != analogValues[SND_SEL])
   {
-    setFrequency2(analogValues[WS_1] << 2);
-    decayVolume = constrain(decayVolume + ((abs(lastAnalogValues[WS_1] - analogValues[WS_1]) << 2)), 0, 255);
+    mode = analogValues[SND_SEL] >> 5;
+    setFrequency2(analogValues[SND_SEL] << 2);
+    decayVolume = constrain(decayVolume + ((abs(lastAnalogValues[SND_SEL] - analogValues[SND_SEL]) << 2)), 0, 255);
   }
-  if (lastAnalogChannelRead == WS_2 && lastAnalogValues[WS_2] != analogValues[WS_2])
+  if (lastAnalogChannelRead == DECAY && lastAnalogValues[DECAY] != analogValues[DECAY])
   {
     setDecay();
   }
-  firstRead = true;
   //start the ADC - at completion the interupt will be called again
   startConversion();
 }
