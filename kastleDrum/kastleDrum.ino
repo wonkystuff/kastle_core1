@@ -92,9 +92,9 @@ uint8_t lastAnalogChannelRead;
 #define KNOB_D  (2u)
 
 //defines for synth parameters
-#define PITCH   KNOB_C
+#define PITCH   KNOB_A
 #define SND_SEL KNOB_D
-#define DECAY   KNOB_A
+#define DECAY   KNOB_C
 #define TRIG    KNOB_B
 
 #if (TRIG == KNOB_A)
@@ -119,8 +119,8 @@ const uint8_t PROGMEM sinetable[128] = {
 //the actual table that is read to generate the sound
 uint8_t wavetable[256];
 
-uint8_t decayVolume;
-uint8_t decayVolume2;
+uint8_t  decayVolume;
+uint8_t  decayVolume2;
 uint16_t decayTime;
 
 void
@@ -139,7 +139,7 @@ setup(void)
   initADC();
   connectChannel(analogChannelRead);
   startConversion();
-  _delay_us(100);
+  _delay_us(300);
 }
 
 void
@@ -383,7 +383,7 @@ setFrequency(uint16_t input)
   if (mode == NOISE)
     frequency = ((input - 200) << 2) + 1; //NOISE
   else if (mode > 2)
-    frequency = (input) + (1 << SAMPLE_PHASE_SHIFT);
+    frequency = input + 1;
   else
     frequency = (input << 2) + (1 << SAMPLE_PHASE_SHIFT);
 }
@@ -502,6 +502,10 @@ ISR(ADC_vect)
   // set controll values if relevant (value changed)
   if (lastAnalogChannelRead == PITCH && lastAnalogValues[PITCH] != analogValues[PITCH])
   {
+#if (PITCH == KNOB_A)
+    // KNOB_A only starts about half way so get it to start about zero-ish:
+    analogValues[PITCH] = (analogValues[PITCH] - 145);
+#endif
     setFrequency(analogValues[PITCH]);
     decayVolume2 = constrain(decayVolume2 + ((abs(lastAnalogValues[PITCH] - analogValues[PITCH]) << 3)), 0, 255); //constrain(mapLookup[,0,1015)); //
   }
