@@ -84,10 +84,6 @@ uint8_t lastAnalogChannelRead;
 #define FM    (0u) // aka phase modulation
 #define TAH   (2u) // aka track & hold modulation (downsampling with T&H)
 
-
-#define LOW_THRES  (150u)
-#define HIGH_THRES (162u)
-
 // Some definitions relevant to the core1.æ - mapping to
 // physical knob labels
 #define KNOB_A  (0u)
@@ -100,6 +96,14 @@ uint8_t lastAnalogChannelRead;
 #define SND_SEL KNOB_D
 #define DECAY   KNOB_A
 #define TRIG    KNOB_B
+
+#if (TRIG == KNOB_A)
+#define LOW_THRES  (150u)
+#define HIGH_THRES (162u)
+#else
+#define LOW_THRES  (80u)
+#define HIGH_THRES (160u)
+#endif
 
 const uint8_t PROGMEM sinetable[128] = {
   0,   0,   0,   0,   1,   1,   1,   2,   2,   3,   4,   5,   5,   6,   7,   9,
@@ -509,6 +513,10 @@ ISR(ADC_vect)
   }
   if (lastAnalogChannelRead == DECAY && lastAnalogValues[DECAY] != analogValues[DECAY])
   {
+#if (DECAY == KNOB_A)
+    // KNOB_A only runs from 128-255, so scale it to 0-254 (or so):
+    analogValues[DECAY] = (analogValues[DECAY] & 0x7f) << 1;
+#endif
     setDecay();
   }
   //start the ADC - at completion the interupt will be called again
