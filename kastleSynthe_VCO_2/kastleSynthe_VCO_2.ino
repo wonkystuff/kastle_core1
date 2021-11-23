@@ -31,7 +31,6 @@ KASTLE VCO v 1.5
  
  */
 
-#define F_CPU 8000000  // This is used by delay.h library
 #include <stdlib.h>
 #include <avr/interrupt.h>
 #include <avr/io.h>        // Adds useful constants
@@ -66,7 +65,7 @@ KASTLE VCO v 1.5
 //#include <SNARE2_AT.h>
 //#include <TR_CB_AT.h>
 //#include <TR_CLAP_AT.h>
-#include <TR_HH_AT.h>
+#include "TR_HH_AT.h"
 //#include <TR_KICK_AT.h>
 //#include <TR_OH_AT.h>
 //#include <TR_RIM_AT.h>
@@ -121,8 +120,8 @@ const uint8_t analogToDigitalPinMapping[4]={
 #define TAH 2 //aka track & hold modulation (downsampling with T&H)
 
 
-#define LOW_THRES 150
-#define HIGH_THRES 162
+#define LOW_THRES 160
+#define HIGH_THRES 220
 #define LOW_MIX 300
 #define HIGH_MIX 900
 
@@ -131,7 +130,7 @@ const uint8_t analogToDigitalPinMapping[4]={
 #define WS_1 3
 #define WS_2 1
 
-const char PROGMEM sinetable[128] = {
+const uint8_t PROGMEM sinetable[128] = {
   0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 4, 5, 5, 6, 7, 9, 10, 11, 12, 14, 15, 17, 18, 20, 21, 23, 25, 27, 29, 31, 33, 35, 37, 40, 42, 44, 47, 49, 52, 54, 57, 59, 62, 65, 67, 70, 73, 76, 79, 82, 85, 88, 90, 93, 97, 100, 103, 106, 109, 112, 115, 118, 121, 124,
   128, 131, 134, 137, 140, 143, 146, 149, 152, 155, 158, 162, 165, 167, 170, 173, 176, 179, 182, 185, 188, 190, 193, 196, 198, 201, 203, 206, 208, 211, 213, 215, 218, 220, 222, 224, 226, 228, 230, 232, 234, 235, 237, 238, 240, 241, 243, 244, 245, 246, 248, 249, 250, 250, 251, 252, 253, 253, 254, 254, 254, 255, 255, 255,
 };
@@ -177,7 +176,7 @@ void setup()  { //happends at the startup
   setTimers(); //setup interrupts
 
     //setup ADC and run it in interrupt
-  init();
+  initADC();
   connectChannel(analogChannelRead);
   startConversion();
   //long _time=millis();
@@ -197,18 +196,6 @@ while(millis()-_time<4){
 
 void setTimers(void)
 {
-  /*
-  TCCR0A=0;
-   TCCR0B=0;
-   bitWrite(TCCR0A,COM0A0,0);
-   bitWrite(TCCR0A,COM0A1,1);
-   bitWrite(TCCR0A,COM0B0,0);
-   bitWrite(TCCR0A,COM0B1,1);
-   bitWrite(TCCR0A,WGM00,1);
-   bitWrite(TCCR0A,WGM01,1);
-   bitWrite(TCCR0B,WGM02,0);
-   bitWrite(TCCR0B,CS00,1);
-   */
   PLLCSR |= (1 << PLLE);               // Enable PLL (64 MHz)
   _delay_us(100);                      // Wait for a steady state
   while (!(PLLCSR & (1 << PLOCK)));    // Ensure PLL lock
@@ -217,9 +204,9 @@ void setTimers(void)
   cli();                               // Interrupts OFF (disable interrupts globally)
 
 
-  TCCR0A = 2<<COM0A0 | 2<<COM0B0 | 3<<WGM00;
-  TCCR0B = 0<<WGM02 | 1<<CS00;
-
+  TCCR0A = _BV(COM0A1) | _BV(COM0B1) | _BV(WGM00) | _BV(WGM01);
+  TCCR0B = _BV(CS00);
+  
   //  setup timer 0 to run fast for audiorate interrupt 
 
   TCCR1 = 0;                  //stop the timer
@@ -230,7 +217,7 @@ void setTimers(void)
   // OCR1C = 31;
   TIMSK = _BV(OCIE1A);// | _BV(TOIE0);    //TOIE0    //interrupt on Compare Match A
   //start timer, ctc mode, prescaler clk/1    
-  TCCR1 = _BV(CTC1) | _BV(CS12);// | _BV(CS10) ;//| _BV(CS11);//  | _BV(CS11) ;// //| _BV(CS13) | _BV(CS12) | _BV(CS11) |
+  TCCR1 = _BV(CTC1) | _BV(CS12) | _BV(CS10); //| _BV(CS11);//  | _BV(CS11) ;// //| _BV(CS13) | _BV(CS12) | _BV(CS11) |
 
   // GTCCR  = (1 << PWM1B) | (1 << COM1B1); // PWM, output on pb4, compare with OCR1B (see interrupt below), reset on match with OCR1C
   //OCR1C  = 0xff;                         // 255
@@ -437,7 +424,7 @@ void synthesis(){
   }
 
   if(mode==NOISE){
-    if((_phase>>2)>=(analogValues[WS_2]-100)<<5){
+    if((_phase>>2)>=(analogValues[WS_2]-100u)<<5){
       _phase=0;
     }
     _sample = (char)pgm_read_byte_near(sampleTable+(_phase>>2));
@@ -547,7 +534,7 @@ void renderDecay(){
 void setFrequency(int _freq){ //set frequency of the interupt for primary oscillator
  _freq=1024-_freq;
  uint8_t preScaler=_freq>>7;
- preScaler+=2; //*2
+ preScaler+=2; // *2
  pwmIncrement=4;
  _upIncrement=pwmIncrement*upIncrement;
  _downIncrement=pwmIncrement*downIncrement;
@@ -563,7 +550,7 @@ void setFrequency(int _freq){ //set frequency of the interupt for primary oscill
 
 
 // #### FUNCTIONS TO ACCES ADC REGISTERS
-void init() {
+void initADC() {
 
   ADMUX  = 0;
   bitWrite(ADCSRA,ADEN,1); //adc enabled
@@ -598,12 +585,3 @@ uint16_t getConversionResult() {
   uint16_t result = ADCL;
   return result | (ADCH<<8);
 }
-
-
-
-
-
-
-
-
-
