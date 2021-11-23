@@ -61,6 +61,10 @@ uint8_t  bitShift=3;
 uint16_t osc2offset=255;
 uint8_t  lastAnalogChannelRead;
 uint8_t  pwmIncrement,_upIncrement,_downIncrement,upIncrement,downIncrement;
+uint8_t decayVolume;
+uint8_t decayTime;
+uint8_t _sample;
+uint8_t _saw, _lastSaw;
 
 const uint8_t analogToDigitalPinMapping[4] = {
   PORTB5, PORTB2, PORTB4, PORTB3
@@ -255,16 +259,56 @@ ISR(TIMER1_COMPA_vect)
   _phase2 += frequency2;
   _phase4 += frequency4;
   _phase5 += frequency5;
+
+  switch (mode)
+  {
+    case FM:
+    {
+      _lastSaw = _saw;
+      _saw=(((255-(_phase>>8)) * (analogValues[WS_2])) >> 8);
   
-  if(mode != FM)
-  {
-    _phase3=_phase2>>5;
-    _phase6 += frequency6;
-  }
-  else
-  {
-    _phs=(_phase+(analogValues[WS_2]*wavetable[_phase2 >> 8])) >> 6; 
-    sample = (wavetable[_phs] );
+      sample2 = ((_saw*wavetable[_phase4 >> 8] ) >> 8) + ((wavetable[_phase5 >> 8] * (255-analogValues[WS_2])) >> 8);
+  
+      if(_lastSaw < _saw)
+      {
+        _phase4 = 64 << 8;
+      }
+  
+      uint8_t shft=abs(_saw - _lastSaw);
+  
+      if(shft > 3)
+      {
+        _phase5 += shft << 8;
+      }
+      _phs=(_phase+(analogValues[WS_2]*wavetable[_phase2 >> 8])) >> 6; 
+      sample = (wavetable[_phs] );
+    }
+    break;
+
+    case NOISE:
+      _phase3=_phase2>>5;
+      _phase6 += frequency6;
+
+      if((_phase >> 2) >= (analogValues[WS_2] - 100u ) << 5)
+      {
+        _phase=0;
+      }
+      _sample = (char)pgm_read_byte_near(sampleTable + (_phase >> 2));
+      _sample = (_sample * wavetable[_phase2 >> 8]) >> 8;
+      sample  = _sample;
+      sample2 = (wavetable[_phase3 + (_phase>>8)]);
+      break;
+
+    case TAH:
+      _phase3=_phase2>>5;
+      _phase6 += frequency6;
+      if((_phase2 >> 8)>analogValues[WS_2])
+      {
+        _phs=_phase>>8;
+        sample = (wavetable[_phs] );
+      }
+      sample2 = (wavetable[_phase2 >> 8]+ wavetable[_phase4 >> 8] + wavetable[_phase5 >> 8]+ wavetable[_phase6 >> 8]) >> 2;
+      break;
   }
 }
 
@@ -278,17 +322,17 @@ const uint8_t multiplier[24] = {
 void
 setFrequency2(uint16_t input)
 {
-  if (mode==NOISE)
+  if (mode == NOISE)
   {
-    frequency2 = (((input-300)<<2)+1)/2;
+    frequency2 = (((input-300) << 2) + 1) / 2;
   }
-  else if (mode==TAH)
+  else if (mode == TAH)
   {
     uint8_t multiplierIndex=analogValues[WS_2]>>5;
-    frequency2 = (input<<2) + 1;
-    frequency4 = (frequency2+1)*multiplier[multiplierIndex];
-    frequency5 = (frequency2-3)*multiplier[multiplierIndex+8];
-    frequency6 = (frequency2+7)*multiplier[multiplierIndex+16];
+    frequency2 = (input << 2) + 1;
+    frequency4 = (frequency2 + 1) * multiplier[multiplierIndex];
+    frequency5 = (frequency2 - 3) * multiplier[multiplierIndex+8];
+    frequency6 = (frequency2 + 7) * multiplier[multiplierIndex+16];
   }
   else
   {
@@ -307,7 +351,7 @@ setLength(uint8_t _length)
 void
 setFrequency(uint16_t input)
 {
-  if(mode==NOISE)
+  if(mode == NOISE)
   {
     frequency = ((input-200)<<2) + 1;
   }
@@ -317,61 +361,9 @@ setFrequency(uint16_t input)
   }
 }
 
-uint8_t decayVolume;
-uint8_t decayTime;
-uint8_t _sample;
-uint8_t _saw, _lastSaw;
-
-void
-synthesis(void)
-{
-  switch(mode)
-  {
-    case FM:
-    {
-      _lastSaw = _saw;
-      _saw=(((255-(_phase>>8))*(analogValues[WS_2]))>>8);
-  
-      sample2 = ((_saw*wavetable[_phase4 >> 8] )>>8)+((wavetable[_phase5 >> 8]*(255-analogValues[WS_2]))>>8);
-  
-      if(_lastSaw<_saw)
-      {
-        _phase4=64<<8;
-      }
-      uint8_t shft=abs(_saw - _lastSaw);
-      if(shft>3)
-      {
-        _phase5 += shft<<8;
-      }
-    }
-    break;
-      
-    case NOISE:
-      if((_phase>>2) >= (analogValues[WS_2]-100u)<<5)
-      {
-        _phase=0;
-      }
-      _sample = (char)pgm_read_byte_near(sampleTable+(_phase>>2));
-      _sample=(_sample*wavetable[_phase2>>8])>>8;
-      sample=_sample;
-      sample2 = (wavetable[_phase3+(_phase>>8)]);
-      break;
-
-    case TAH:
-      if((_phase2 >> 8)>analogValues[WS_2])
-      {
-        _phs=_phase>>8;
-        sample = (wavetable[_phs] );
-      }
-      sample2 = (wavetable[_phase2 >>8]+ wavetable[_phase4 >>8] + wavetable[_phase5 >>8]+ wavetable[_phase6 >>8])>>2;
-      break;
-  } 
-}
-
 void
 loop(void)
 { 
-  synthesis();
   modeDetect();
 }
 
@@ -380,15 +372,15 @@ modeDetect(void)
 {
   if (analogValues[MODE]<LOW_THRES)
   {
-    mode=NOISE; //, incr=11,_incr=6, bitShift=2, osc2offset=270; 
+    mode = NOISE;
   }
   else if (analogValues[MODE]>HIGH_THRES)
   {
-    mode=TAH; //, incr=24,_incr=6,bitShift=4,osc2offset=255;
+    mode = TAH;
   }
   else
   {
-    mode = FM; //, incr=11,_incr=5,bitShift=4,osc2offset=255; 
+    mode = FM;
   }
 }
 
@@ -407,11 +399,7 @@ ISR(ADC_vect)
   analogValues[analogChannelRead] = getConversionResult()>>2;
 
   lastAnalogChannelRead=analogChannelRead;
-  if(!analogChannelRead)
-  {
-    modeDetect();
-  }
-
+  
   analogChannelReadIndex++;
   if(analogChannelReadIndex>5)
   {
@@ -423,6 +411,10 @@ ISR(ADC_vect)
   connectChannel(analogChannelRead);
 
   // set control values if relevant (value changed)
+  if(lastAnalogChannelRead==MODE && lastAnalogValues[MODE]!=analogValues[MODE])
+  {
+    modeDetect();
+  }
   if(lastAnalogChannelRead==PITCH && lastAnalogValues[PITCH]!=analogValues[PITCH])
   {
     setFrequency(analogValues[PITCH]<<2);//constrain(mapLookup[,0,1015));
