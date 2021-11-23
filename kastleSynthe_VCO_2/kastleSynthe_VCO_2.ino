@@ -241,8 +241,11 @@ uint16_t frequency2, frequency4, frequency5, frequency6;
 uint8_t  _phs,_phs90;
 uint8_t  _phase3;
 
-ISR(TIMER1_COMPA_vect)  // render primary oscillator in the interupt
+// Sample-rate interrupt here:
+ISR(TIMER1_COMPA_vect)
 {
+  // render primary oscillator in the interupt
+
   OCR0A = sample;   // (sample+sample2)>>1;
   OCR0B = sample2;  // _phs;// sample90;
 
@@ -322,43 +325,46 @@ uint8_t _saw, _lastSaw;
 void
 synthesis(void)
 {
-  if(mode==FM)
+  switch(mode)
   {
-    _lastSaw = _saw;
-    _saw=(((255-(_phase>>8))*(analogValues[WS_2]))>>8);
+    case FM:
+    {
+      _lastSaw = _saw;
+      _saw=(((255-(_phase>>8))*(analogValues[WS_2]))>>8);
+  
+      sample2 = ((_saw*wavetable[_phase4 >> 8] )>>8)+((wavetable[_phase5 >> 8]*(255-analogValues[WS_2]))>>8);
+  
+      if(_lastSaw<_saw)
+      {
+        _phase4=64<<8;
+      }
+      uint8_t shft=abs(_saw - _lastSaw);
+      if(shft>3)
+      {
+        _phase5 += shft<<8;
+      }
+    }
+    break;
+      
+    case NOISE:
+      if((_phase>>2) >= (analogValues[WS_2]-100u)<<5)
+      {
+        _phase=0;
+      }
+      _sample = (char)pgm_read_byte_near(sampleTable+(_phase>>2));
+      _sample=(_sample*wavetable[_phase2>>8])>>8;
+      sample=_sample;
+      sample2 = (wavetable[_phase3+(_phase>>8)]);
+      break;
 
-    sample2 = ((_saw*wavetable[_phase4 >> 8] )>>8)+((wavetable[_phase5 >> 8]*(255-analogValues[WS_2]))>>8);
-
-    if(_lastSaw<_saw)
-    {
-      _phase4=64<<8;
-    }
-    uint8_t shft=abs(_saw-_lastSaw);
-    if(shft>3)
-    {
-      _phase5+=shft<<8;
-    }
-  }
-  else if (mode==NOISE)
-  {
-    if((_phase>>2) >= (analogValues[WS_2]-100u)<<5)
-    {
-      _phase=0;
-    }
-    _sample = (char)pgm_read_byte_near(sampleTable+(_phase>>2));
-    _sample=(_sample*wavetable[_phase2>>8])>>8;
-    sample=_sample;
-    sample2 = (wavetable[_phase3+(_phase>>8)]);
-  }
-  else if(mode==TAH)
-  {
-    if((_phase2 >> 8)>analogValues[WS_2])
-    {
-      _phs=_phase>>8;
-      sample = (wavetable[_phs] );
-    }
-
-    sample2 = (wavetable[_phase2 >>8]+ wavetable[_phase4 >>8] + wavetable[_phase5 >>8]+ wavetable[_phase6 >>8])>>2;
+    case TAH:
+      if((_phase2 >> 8)>analogValues[WS_2])
+      {
+        _phs=_phase>>8;
+        sample = (wavetable[_phs] );
+      }
+      sample2 = (wavetable[_phase2 >>8]+ wavetable[_phase4 >>8] + wavetable[_phase5 >>8]+ wavetable[_phase6 >>8])>>2;
+      break;
   } 
 }
 
@@ -425,10 +431,6 @@ ISR(ADC_vect)
   {
     setFrequency2(analogValues[WS_1]<<2);
   }
-  if(lastAnalogChannelRead==WS_2 && lastAnalogValues[WS_2]!=analogValues[WS_2])
-  {
-    analogValues[WS_2]= analogValues[WS_2];
-  }
 
   //start the ADC - at completion the interupt will be called again
   startConversion();
@@ -440,13 +442,7 @@ void
 initADC(void)
 {
   ADMUX  = 0;
-  bitWrite(ADCSRA,ADEN,1); //adc enabled
-  bitWrite(ADCSRA,ADPS2,1); // set prescaler
-  bitWrite(ADCSRA,ADPS1,1); // set prescaler
-  bitWrite(ADCSRA,ADPS0,1); // set prescaler
-  bitWrite(ADCSRA,ADIE,1); //enable conversion finished interupt
-  bitWrite(SREG,7,1);
-  // prescaler = highest division
+  ADCSRA = _BV(ADEN) | _BV(ADPS2) | _BV(ADPS1) | _BV(ADPS0) | _BV(ADIE);
 }
 
 
@@ -459,8 +455,9 @@ connectChannel(uint8_t number)
 }
 
 void
-startConversion(void) {
-  bitWrite(ADCSRA,ADSC,1); //start conversion
+startConversion(void)
+{
+  ADCSRA |= _BV(ADSC);  //start conversion
 }
 
 uint16_t
