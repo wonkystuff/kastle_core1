@@ -10,25 +10,25 @@
 
 /*
 KASTLE VCO v 1.5
- 
- 
+
+
  Features
  -5 synthesis modes = phase modulation, phase distortion, tarck & hold modulation, formant synthesis, noise wtf
  -regular & alternative waveform output by 2 PWM channels
  -3 sound parameters controlled by voltage inputs
  -voltage selectable synthesis modes on weak I/O Reset pin
 
- 
+
  Writen by Vaclav Pelousek 2016
  open source license: CC BY SA
  http://www.bastl-instruments.com
- 
- 
+
+
  -software written in Arduino 1.0.6 - used to flash ATTINY 85 running at 8mHz
  -created with help of the heavenly powers of internet and several tutorials that you can google out
  -i hope somebody finds this code usefull (i know it is a mess :( )
- 
- thanks to 
+
+ thanks to
  -Lennart Schierling for making some work on the register access
  -Uwe Schuller for explaining the capacitance of zener diodes
  -Peter Edwards for making the inspireing bitRanger
@@ -46,37 +46,21 @@ KASTLE VCO v 1.5
 #include "TR_HH_AT.h"
 
 //global variables
-uint8_t  _out;
-uint16_t time;
-uint8_t  mode;
-uint8_t  analogChannelRead=1;
-uint8_t  analogValues[4];
-uint8_t  lastAnalogValues[4];
-uint8_t  out;
-uint8_t  pwmCounter;
-bool     flop;
-uint8_t  incr=6, _incr=6;
-uint8_t  lastOut;
-uint8_t  bitShift=3;
-uint16_t osc2offset=255;
-uint8_t  lastAnalogChannelRead;
-uint8_t  pwmIncrement,_upIncrement,_downIncrement,upIncrement,downIncrement;
-uint8_t decayVolume;
-uint8_t decayTime;
+uint8_t mode;
+uint8_t analogChannelRead=1;
+uint8_t analogValues[4];
+uint8_t lastAnalogValues[4];
+uint8_t lastAnalogChannelRead;
 uint8_t _sample;
 uint8_t _saw, _lastSaw;
 
-const uint8_t analogToDigitalPinMapping[4] = {
-  PORTB5, PORTB2, PORTB4, PORTB3
-};
-
 //defines for synth types
-//all are dual oscillator setups - 
+//all are dual oscillator setups -
 #define NOISE 1 // phase distortion -
 #define FM    0 // aka phase modulation
 #define TAH   2 // aka track & hold modulation (downsampling with T&H)
 
-#define LOW_THRES 160
+#define LOW_THRES  160
 #define HIGH_THRES 220
 
 // Some definitions relevant to the core1.æ - mapping to
@@ -122,7 +106,7 @@ setup(void)
   initADC();
   connectChannel(analogChannelRead);
   startConversion();
-} 
+}
 
 void
 setTimers(void)
@@ -136,17 +120,17 @@ setTimers(void)
 
   TCCR0A = _BV(COM0A1) | _BV(COM0B1) | _BV(WGM00) | _BV(WGM01);
   TCCR0B = _BV(CS00);
-  
-  //  setup timer 0 to run fast for audiorate interrupt 
+
+  //  setup timer 0 to run fast for audiorate interrupt
 
   TCCR1 = 0;                  //stop the timer
   TCNT1 = 0;                  //zero the timer
   GTCCR = _BV(PSR1);          //reset the prescaler
   OCR1A = 255;                //set the compare value
-  OCR1C = 255;    
+  OCR1C = 255;
 
   TIMSK = _BV(OCIE1A);   //interrupt on Compare Match A
-  //start timer, ctc mode, prescaler clk/1    
+  //start timer, ctc mode, prescaler clk/1
   TCCR1 = _BV(CTC1) | _BV(CS12) | _BV(CS10);
 
   sei();
@@ -254,7 +238,7 @@ ISR(TIMER1_COMPA_vect)
   OCR0B = sample2;  // _phs;// sample90;
 
   //_lastPhase=_phase;
-  _phase += frequency;   
+  _phase += frequency;
 
   _phase2 += frequency2;
   _phase4 += frequency4;
@@ -266,21 +250,21 @@ ISR(TIMER1_COMPA_vect)
     {
       _lastSaw = _saw;
       _saw=(((255-(_phase>>8)) * (analogValues[WS_2])) >> 8);
-  
+
       sample2 = ((_saw*wavetable[_phase4 >> 8] ) >> 8) + ((wavetable[_phase5 >> 8] * (255-analogValues[WS_2])) >> 8);
-  
+
       if(_lastSaw < _saw)
       {
         _phase4 = 64 << 8;
       }
-  
+
       uint8_t shft=abs(_saw - _lastSaw);
-  
+
       if(shft > 3)
       {
         _phase5 += shft << 8;
       }
-      _phs=(_phase+(analogValues[WS_2]*wavetable[_phase2 >> 8])) >> 6; 
+      _phs=(_phase+(analogValues[WS_2]*wavetable[_phase2 >> 8])) >> 6;
       sample = (wavetable[_phs] );
     }
     break;
@@ -363,7 +347,7 @@ setFrequency(uint16_t input)
 
 void
 loop(void)
-{ 
+{
   modeDetect();
 }
 
@@ -399,7 +383,7 @@ ISR(ADC_vect)
   analogValues[analogChannelRead] = getConversionResult()>>2;
 
   lastAnalogChannelRead=analogChannelRead;
-  
+
   analogChannelReadIndex++;
   if(analogChannelReadIndex>5)
   {
