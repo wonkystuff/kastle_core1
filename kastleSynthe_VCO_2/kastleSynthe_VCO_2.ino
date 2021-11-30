@@ -88,7 +88,7 @@ const uint8_t PROGMEM sinetable[128] = {
 };
 
 //the actual table that is read to generate the sound
-unsigned char wavetable[256];
+uint8_t wavetable[256];
 
 void
 setup(void)
@@ -234,8 +234,8 @@ ISR(TIMER1_COMPA_vect)
 {
   // render primary oscillator in the interupt
 
-  OCR0A = sample;   // (sample+sample2)>>1;
-  OCR0B = sample2;  // _phs;// sample90;
+  OCR0B = sample;
+  OCR0A = sample2;
 
   //_lastPhase=_phase;
   _phase += frequency;
@@ -251,7 +251,7 @@ ISR(TIMER1_COMPA_vect)
       _lastSaw = _saw;
       _saw=(((255-(_phase>>8)) * (analogValues[WS_2])) >> 8);
 
-      sample2 = ((_saw*wavetable[_phase4 >> 8] ) >> 8) + ((wavetable[_phase5 >> 8] * (255-analogValues[WS_2])) >> 8);
+      sample2 = ((_saw * wavetable[_phase4 >> 8] ) >> 8) + ((wavetable[_phase4 >> 8] * (255-analogValues[WS_2])) >> 8);
 
       if(_lastSaw < _saw)
       {
@@ -264,34 +264,32 @@ ISR(TIMER1_COMPA_vect)
       {
         _phase5 += shft << 8;
       }
-      _phs=(_phase+(analogValues[WS_2]*wavetable[_phase2 >> 8])) >> 6;
+      _phs=(_phase + (analogValues[WS_2] * wavetable[_phase2 >> 8])) >> 6;
       sample = (wavetable[_phs] );
     }
     break;
 
     case NOISE:
-      _phase3=_phase2>>5;
-      _phase6 += frequency6;
+      _phase3 = _phase2 >> 8;
+      sample2 = (wavetable[_phase3 + (_phase>>8)]);
 
       if((_phase >> 2) >= (analogValues[WS_2] - 100u ) << 5)
       {
         _phase=0;
       }
-      _sample = (char)pgm_read_byte_near(sampleTable + (_phase >> 2));
+      _sample = 0x80 + pgm_read_byte_near(sampleTable + (_phase >> 2));
       _sample = (_sample * wavetable[_phase2 >> 8]) >> 8;
       sample  = _sample;
-      sample2 = (wavetable[_phase3 + (_phase>>8)]);
       break;
 
     case TAH:
-      _phase3=_phase2>>5;
       _phase6 += frequency6;
-      if((_phase2 >> 8)>analogValues[WS_2])
+      if ((_phase2 >> 8) >= analogValues[WS_2])
       {
         _phs=_phase>>8;
         sample = (wavetable[_phs] );
       }
-      sample2 = (wavetable[_phase2 >> 8]+ wavetable[_phase4 >> 8] + wavetable[_phase5 >> 8]+ wavetable[_phase6 >> 8]) >> 2;
+      sample2 = (wavetable[_phase2 >> 8] + wavetable[_phase4 >> 8] + wavetable[_phase5 >> 8] + wavetable[_phase6 >> 8]) >> 2;
       break;
   }
 }
@@ -395,15 +393,15 @@ ISR(ADC_vect)
   connectChannel(analogChannelRead);
 
   // set control values if relevant (value changed)
-  if(lastAnalogChannelRead==MODE && lastAnalogValues[MODE]!=analogValues[MODE])
+  if(lastAnalogChannelRead==MODE)
   {
     modeDetect();
   }
-  if(lastAnalogChannelRead==PITCH && lastAnalogValues[PITCH]!=analogValues[PITCH])
+  else if(lastAnalogChannelRead==PITCH)
   {
     setFrequency(analogValues[PITCH]<<2);//constrain(mapLookup[,0,1015));
   }
-  if(lastAnalogChannelRead==WS_1 && lastAnalogValues[WS_1]!=analogValues[WS_1])
+  else if(lastAnalogChannelRead==WS_1)
   {
     setFrequency2(analogValues[WS_1]<<2);
   }
