@@ -295,10 +295,10 @@ ISR(TIMER1_COMPA_vect)
 }
 
 uint16_t sampleEnd;
-const uint8_t multiplier[24] = {
-  2, 2, 2, 3, 1, 2, 4, 4,
-  3, 4, 5, 2, 1, 5, 6, 8,
-  3, 8, 7, 8, 7, 6, 8, 16
+const uint8_t multiplier[3][8] = {
+  {2, 2, 2, 3, 1, 2, 4, 4},
+  {3, 4, 5, 2, 1, 5, 6, 8},
+  {3, 8, 7, 8, 7, 6, 8, 16}
 };
 
 void
@@ -312,9 +312,9 @@ setFrequency2(uint16_t input)
   {
     uint8_t multiplierIndex=analogValues[WS_2]>>5;
     frequency2 = (input << 2) + 1;
-    frequency4 = (frequency2 + 1) * multiplier[multiplierIndex];
-    frequency5 = (frequency2 - 3) * multiplier[multiplierIndex+8];
-    frequency6 = (frequency2 + 7) * multiplier[multiplierIndex+16];
+    frequency4 = (frequency2 + 1) * multiplier[0][multiplierIndex];
+    frequency5 = (frequency2 - 3) * multiplier[1][multiplierIndex];
+    frequency6 = (frequency2 + 7) * multiplier[2][multiplierIndex];
   }
   else
   {
